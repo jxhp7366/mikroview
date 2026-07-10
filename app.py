@@ -121,8 +121,23 @@ def api_interfaces():
 @login_required
 def api_clients():
     try:
-        data = mk.get_pppoe_clients(get_server_id())
+        sid = get_server_id()
+        data = mk.get_pppoe_clients(sid)
+        # Guardar snapshot para historial
+        mk.snapshot_pppoe(mk.get_server(sid)["id"], data["total"])
         return jsonify({"success": True, "data": data, "ts": datetime.now().isoformat()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/clients/history")
+@login_required
+def api_clients_history():
+    try:
+        sid = get_server_id()
+        server = mk.get_server(sid)
+        period = request.args.get("period", "1h")
+        data = mk.get_pppoe_history(server["id"], period)
+        return jsonify({"success": True, "data": data, "server": server["name"], "period": period})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

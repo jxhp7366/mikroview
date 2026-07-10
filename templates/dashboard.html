@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MikroView — MK Olivo 1</title>
+  <title>MikroView</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
   <style>
@@ -12,20 +12,15 @@
     .card { background: var(--card); border: 1px solid #2a2d37; border-radius: 12px; }
     .metric-value { font-size: clamp(1.4rem, 4vw, 2.2rem); font-weight: 700; }
     .metric-sm { font-size: clamp(0.9rem, 2.5vw, 1.5rem); font-weight: 700; }
-    .wan-up { color: #22c55e; } .wan-down { color: #ef4444; }
-    .alert-critical { border-left: 3px solid #ef4444; }
-    .alert-high { border-left: 3px solid #f97316; }
-    .alert-medium { border-left: 3px solid #eab308; }
     .navbar { background: var(--card) !important; border-bottom: 1px solid #2a2d37; }
     .refresh-dot { animation: pulse 1.5s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
     .threat-row { font-size: .75rem; font-family: monospace; word-break: break-all; }
-    .wan-badge { font-size: clamp(.7rem, 2vw, .85rem); }
+    .period-btn { font-size: .7rem; padding: 2px 8px; }
+    .period-btn.active { background: var(--accent) !important; color: #fff !important; }
     @media (max-width: 576px) {
+      .card { padding: .6rem !important; } canvas { max-height: 140px !important; }
       .navbar-brand { font-size: 1rem; }
-      .card { padding: .6rem !important; }
-      .card-body { padding: .5rem !important; }
-      canvas { max-height: 140px !important; }
     }
   </style>
 </head>
@@ -34,59 +29,51 @@
 <nav class="navbar navbar-dark px-2 px-md-3">
   <span class="navbar-brand mb-0 h1"><i class="bi bi-router"></i> <span class="d-none d-sm-inline">MikroView</span></span>
   <div class="d-flex align-items-center gap-2">
-    <select class="form-select form-select-sm bg-dark text-light border-secondary" id="serverSelect" style="width:auto;max-width:140px" onchange="switchServer()"></select>
-    <span class="text-muted small d-none d-sm-inline" id="clock">--</span>
+    <select class="form-select form-select-sm bg-dark text-light border-secondary" id="serverSelect" style="width:auto;max-width:130px" onchange="switchServer()"></select>
+    <button class="btn btn-outline-secondary btn-sm" onclick="showServerModal()" title="Gestionar MikroTiks"><i class="bi bi-gear"></i></button>
     <span class="badge bg-success refresh-dot" id="statusDot">●</span>
     <a href="/logout" class="btn btn-outline-secondary btn-sm"><i class="bi bi-box-arrow-right"></i></a>
   </div>
 </nav>
 
 <div class="container-fluid px-2 px-md-3 py-2">
-  <!-- Row 1: Métricas clave -->
+  <!-- Row 1: Métricas -->
   <div class="row g-2 mb-2">
-    <div class="col-6 col-md-3">
-      <div class="card p-2 p-md-3 text-center h-100">
-        <small class="text-muted">CPU</small>
-        <div class="metric-value" id="cpu">--%</div>
-        <div class="progress mt-1" style="height:5px"><div class="progress-bar" id="cpuBar"></div></div>
-      </div>
-    </div>
-    <div class="col-6 col-md-3">
-      <div class="card p-2 p-md-3 text-center h-100">
-        <small class="text-muted">RAM</small>
-        <div class="metric-value" id="ram">--</div>
-        <small class="text-muted d-none d-md-inline" id="ramDetail"></small>
-      </div>
+    <div class="col-6 col-md-2">
+      <div class="card p-2 p-md-3 text-center h-100"><small class="text-muted">CPU</small><div class="metric-value" id="cpu">--%</div><div class="progress mt-1" style="height:5px"><div class="progress-bar" id="cpuBar"></div></div></div>
     </div>
     <div class="col-6 col-md-2">
-      <div class="card p-2 p-md-3 text-center h-100">
-        <small class="text-muted">Clientes</small>
-        <div class="metric-value" id="clients">--</div>
-        <small class="text-muted" style="font-size:.7rem">PPPoE</small>
-      </div>
+      <div class="card p-2 p-md-3 text-center h-100"><small class="text-muted">RAM</small><div class="metric-value" id="ram">--</div><small class="text-muted d-none d-md-inline" id="ramDetail"></small></div>
     </div>
     <div class="col-6 col-md-2">
-      <div class="card p-2 p-md-3 text-center h-100">
-        <small class="text-muted">Uptime</small>
-        <div class="metric-sm" id="uptime">--</div>
-      </div>
+      <div class="card p-2 p-md-3 text-center h-100"><small class="text-muted">Clientes</small><div class="metric-value" id="clients">--</div><small class="text-muted" style="font-size:.7rem">PPPoE activos</small></div>
     </div>
-    <div class="col-12 col-md-2">
-      <div class="card p-2 p-md-3 h-100">
-        <small class="text-muted mb-1">WAN</small>
-        <div class="d-flex flex-column gap-1" id="wanStatus"></div>
-      </div>
+    <div class="col-6 col-md-2">
+      <div class="card p-2 p-md-3 text-center h-100"><small class="text-muted">Uptime</small><div class="metric-sm" id="uptime">--</div></div>
+    </div>
+    <div class="col-12 col-md-4">
+      <div class="card p-2 p-md-3 h-100"><small class="text-muted mb-1">WAN</small><div class="d-flex flex-wrap gap-1" id="wanStatus"></div></div>
     </div>
   </div>
 
-  <!-- Row 2: Gráfico CPU -->
+  <!-- Row 2: CPU Chart + PPPoE History -->
   <div class="row g-2 mb-2">
-    <div class="col-12">
+    <div class="col-12 col-md-6">
+      <div class="card p-2 p-md-3"><small class="text-muted mb-1"><i class="bi bi-cpu"></i> CPU</small><div style="position:relative;height:clamp(130px,25vw,160px)"><canvas id="cpuChart"></canvas></div></div>
+    </div>
+    <div class="col-12 col-md-6">
       <div class="card p-2 p-md-3">
-        <small class="text-muted mb-1"><i class="bi bi-graph-up"></i> CPU</small>
-        <div style="position:relative; height: clamp(140px, 30vw, 180px);">
-          <canvas id="cpuChart"></canvas>
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <small class="text-muted"><i class="bi bi-people"></i> <span id="historyLabel">Clientes PPPoE</span></small>
+          <div class="btn-group btn-group-sm" id="periodBtns">
+            <button class="btn btn-outline-secondary period-btn active" data-period="1h">1H</button>
+            <button class="btn btn-outline-secondary period-btn" data-period="8h">8H</button>
+            <button class="btn btn-outline-secondary period-btn" data-period="24h">24H</button>
+            <button class="btn btn-outline-secondary period-btn" data-period="1w">1S</button>
+            <button class="btn btn-outline-secondary period-btn" data-period="1m">1M</button>
+          </div>
         </div>
+        <div style="position:relative;height:clamp(130px,25vw,160px)"><canvas id="historyChart"></canvas></div>
       </div>
     </div>
   </div>
@@ -97,21 +84,33 @@
       <div class="card p-2 p-md-3">
         <div class="d-flex justify-content-between align-items-center mb-1">
           <small class="text-muted"><i class="bi bi-shield-exclamation"></i> Alertas</small>
-          <div class="d-flex gap-1">
-            <a href="/certs/ca" class="btn btn-outline-secondary btn-sm py-0 px-1" title="Descargar CA"><i class="bi bi-download"></i> <span class="d-none d-sm-inline">SSL</span></a>
-          </div>
+          <a href="/certs/ca" class="btn btn-outline-secondary btn-sm py-0 px-1"><i class="bi bi-download"></i> <span class="d-none d-sm-inline">SSL</span></a>
         </div>
-        <div id="threats" class="overflow-auto" style="max-height:200px">
-          <small class="text-muted">Cargando...</small>
-        </div>
+        <div id="threats" class="overflow-auto" style="max-height:160px"><small class="text-muted">Cargando...</small></div>
       </div>
     </div>
   </div>
 
-  <!-- Footer -->
-  <div class="text-center text-muted small mt-2 pb-2">
-    MK Olivo 1 · <span id="rosVersion">--</span> · 
-    <span id="lastUpdate">--</span>
+  <div class="text-center text-muted small mt-2 pb-2"><span id="serverName">--</span> · <span id="rosVersion">--</span> · <span id="lastUpdate">--</span></div>
+</div>
+
+<!-- Modal: Gestionar Servidores -->
+<div class="modal fade" id="serverModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content bg-dark text-light">
+      <div class="modal-header border-secondary"><h6 class="modal-title"><i class="bi bi-router"></i> Gestionar MikroTiks</h6><button class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div id="serverList" class="mb-3"></div>
+        <hr class="border-secondary">
+        <h6 class="small">Agregar nuevo</h6>
+        <input class="form-control form-control-sm bg-dark text-light border-secondary mb-1" id="newName" placeholder="Nombre (ej: MK Olivo 2)">
+        <input class="form-control form-control-sm bg-dark text-light border-secondary mb-1" id="newHost" placeholder="IP (ej: 190.15.x.x)">
+        <input class="form-control form-control-sm bg-dark text-light border-secondary mb-1" id="newPort" placeholder="Puerto (8822)" value="8822">
+        <input class="form-control form-control-sm bg-dark text-light border-secondary mb-2" id="newUser" placeholder="Usuario (hermes)" value="hermes">
+        <button class="btn btn-primary btn-sm w-100" onclick="addServer()"><i class="bi bi-plus-circle"></i> Agregar</button>
+        <div id="addMsg" class="small mt-1"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -119,142 +118,146 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4/dist/chart.umd.min.js"></script>
 <script>
 const MAX_POINTS = 30;
-const cpuHistory = [];
-let cpuChart;
-let currentServer = '';
-let servers = [];
+let cpuHistory = [], cpuChart, historyChart, currentServer = '', servers = [], currentPeriod = '1h';
+let serverModal;
+
+function apiUrl(path) { return currentServer ? `${path}?server=${currentServer}` : path; }
 
 async function loadServers() {
-  try {
-    const r = await fetch('/api/servers');
-    const j = await r.json();
-    servers = j.data || [];
-    const sel = document.getElementById('serverSelect');
-    sel.innerHTML = servers.map(s => 
-      `<option value="${s.id}" ${s.is_default ? 'selected' : ''}>${s.name}</option>`
-    ).join('');
-    currentServer = servers.find(s => s.is_default)?.id || servers[0]?.id || '';
-  } catch(e) { console.error(e); }
+  const r = await fetch('/api/servers'); const j = await r.json();
+  servers = j.data || [];
+  const sel = document.getElementById('serverSelect');
+  sel.innerHTML = servers.map(s => `<option value="${s.id}" ${s.is_default?'selected':''}>${s.name}</option>`).join('');
+  currentServer = servers.find(s => s.is_default)?.id || servers[0]?.id || '';
 }
 
 function switchServer() {
   currentServer = document.getElementById('serverSelect').value;
-  cpuHistory.length = 0;
-  refresh();
-  refreshThreats();
+  cpuHistory = [];
+  if(cpuChart){ cpuChart.data.datasets[0].data=[]; cpuChart.update(); }
+  refresh(); refreshThreats(); loadHistory();
 }
 
-function apiUrl(path) {
-  return currentServer ? `${path}?server=${currentServer}` : path;
-}
-
-function initChart() {
-  const ctx = document.getElementById('cpuChart').getContext('2d');
-  cpuChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [{
-        data: [],
-        borderColor: '#3b82f6',
-        backgroundColor: 'rgba(59,130,246,0.1)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: 0,
-        borderWidth: 2,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: { duration: 300 },
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { min: 0, max: 100, ticks: { callback: v => v+'%', font: { size: 10 } }, grid: { color: '#2a2d37' } },
-        x: { display: false }
-      }
-    }
+// --- Charts ---
+function initCharts() {
+  const ctx1 = document.getElementById('cpuChart').getContext('2d');
+  cpuChart = new Chart(ctx1, {
+    type:'line', data:{labels:[],datasets:[{data:[],borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,0.1)',fill:true,tension:0.3,pointRadius:0,borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:300},plugins:{legend:{display:false}},scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{color:'#2a2d37'}},x:{display:false}}}
+  });
+  const ctx2 = document.getElementById('historyChart').getContext('2d');
+  historyChart = new Chart(ctx2, {
+    type:'line', data:{labels:[],datasets:[{label:'PPPoE',data:[],borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,0.1)',fill:true,tension:0.3,pointRadius:0,borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:300},plugins:{legend:{display:false}},scales:{y:{min:0,ticks:{font:{size:10}},grid:{color:'#2a2d37'}},x:{ticks:{font:{size:8},maxTicksLimit:8,autoSkip:true},grid:{display:false}}}}
   });
 }
 
+async function loadHistory() {
+  try {
+    const r = await fetch(apiUrl(`/api/clients/history?period=${currentPeriod}`));
+    const j = await r.json();
+    if(!j.success) return;
+    document.getElementById('historyLabel').textContent = `Clientes · ${j.server}`;
+    const data = j.data || [];
+    historyChart.data.labels = data.map(d => {
+      const t = new Date(d.time);
+      return currentPeriod==='1h'||currentPeriod==='8h' ? t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) :
+             currentPeriod==='24h' ? t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) :
+             t.toLocaleDateString([],{day:'numeric',month:'short'});
+    });
+    historyChart.data.datasets[0].data = data.map(d => d.clients);
+    historyChart.options.scales.y.min = Math.max(0, Math.min(...data.map(d=>d.clients)) - 5);
+    historyChart.update();
+  } catch(e){ console.error(e); }
+}
+
+document.getElementById('periodBtns').addEventListener('click', e => {
+  if(e.target.classList.contains('period-btn')) {
+    document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active');
+    currentPeriod = e.target.dataset.period;
+    loadHistory();
+  }
+});
+
+// --- Refresh ---
 async function refresh() {
   try {
-    const r = await fetch(apiUrl('/api/all'));
-    const j = await r.json();
-    if (!j.success) throw new Error(j.error);
+    const r = await fetch(apiUrl('/api/all')); const j = await r.json();
+    if(!j.success) throw new Error(j.error);
     const d = j.data;
-    
-    // Métricas
-    document.getElementById('cpu').textContent = d.status.cpu + '%';
-    document.getElementById('cpuBar').style.width = d.status.cpu + '%';
-    document.getElementById('cpuBar').className = 'progress-bar ' + 
-      (d.status.cpu > 80 ? 'bg-danger' : d.status.cpu > 60 ? 'bg-warning' : 'bg-success');
-    
-    document.getElementById('ram').textContent = d.status.memory_used_pct + '%';
-    const ramEl = document.getElementById('ramDetail');
-    if (ramEl) ramEl.textContent = d.status.memory_free_mb + ' MB libre';
-    
+    document.getElementById('cpu').textContent = d.status.cpu+'%';
+    document.getElementById('cpuBar').style.width = d.status.cpu+'%';
+    document.getElementById('cpuBar').className = 'progress-bar '+(d.status.cpu>80?'bg-danger':d.status.cpu>60?'bg-warning':'bg-success');
+    document.getElementById('ram').textContent = d.status.memory_used_pct+'%';
+    const rd = document.getElementById('ramDetail'); if(rd) rd.textContent = d.status.memory_free_mb+' MB libre';
     document.getElementById('clients').textContent = d.clients;
     document.getElementById('uptime').textContent = d.status.uptime;
     document.getElementById('rosVersion').textContent = d.status.version;
-    
-    // CPU chart — arreglado: usa .data directamente, no reasigna referencia
-    if (cpuChart) {
+    document.getElementById('serverName').textContent = d.status.server_name;
+    if(cpuChart) {
       cpuHistory.push(d.status.cpu);
-      while (cpuHistory.length > MAX_POINTS) cpuHistory.shift();
-      cpuChart.data.labels = cpuHistory.map(() => '');
-      cpuChart.data.datasets[0].data = [...cpuHistory]; // nueva copia
+      while(cpuHistory.length>MAX_POINTS) cpuHistory.shift();
+      cpuChart.data.labels=cpuHistory.map(()=>'');
+      cpuChart.data.datasets[0].data=[...cpuHistory];
       cpuChart.update('none');
     }
-    
-    // WAN
-    const wanDiv = document.getElementById('wanStatus');
-    wanDiv.innerHTML = d.wan.map(w => 
-      `<span class="badge wan-badge ${w.running ? 'bg-success bg-opacity-25 text-success' : 'bg-danger bg-opacity-25 text-danger'}">
-        ${w.comment || w.name}: ${w.running ? 'UP' : 'DOWN'}
-      </span>`
+    document.getElementById('wanStatus').innerHTML = d.wan.map(w =>
+      `<span class="badge" style="font-size:clamp(.65rem,2vw,.8rem);background:${w.running?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)'};color:${w.running?'#22c55e':'#ef4444'}">${w.comment||w.name}: ${w.running?'UP':'DOWN'}</span>`
     ).join('');
-    
     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
     document.getElementById('statusDot').className = 'badge bg-success refresh-dot';
-  } catch(e) {
-    document.getElementById('statusDot').className = 'badge bg-danger';
-    console.error(e);
-  }
+  } catch(e){ document.getElementById('statusDot').className='badge bg-danger'; console.error(e); }
 }
 
 async function refreshThreats() {
   try {
-    const r = await fetch(apiUrl('/api/logs'));
-    const j = await r.json();
+    const r = await fetch(apiUrl('/api/logs')); const j = await r.json();
     const threats = j.data?.threats || [];
     const div = document.getElementById('threats');
-    if (threats.length === 0) {
-      div.innerHTML = '<small class="text-success">✅ Sin amenazas detectadas</small>';
-      return;
-    }
-    div.innerHTML = threats.slice(-15).reverse().map(t => 
-      `<div class="alert-${t.severity} bg-dark p-1 px-2 mb-1 rounded threat-row">
-        <span class="text-${t.severity==='critical'?'danger':t.severity==='high'?'warning':'info'}">●</span>
-        ${t.message}
-      </div>`
+    if(threats.length===0){ div.innerHTML='<small class="text-success">✅ Sin amenazas</small>'; return; }
+    div.innerHTML = threats.slice(-15).reverse().map(t =>
+      `<div class="alert-${t.severity} bg-dark p-1 px-2 mb-1 rounded threat-row"><span class="text-${t.severity==='critical'?'danger':t.severity==='high'?'warning':'info'}">●</span> ${t.message}</div>`
     ).join('');
-  } catch(e) { console.error(e); }
+  } catch(e){ console.error(e); }
 }
 
-// Reloj
-setInterval(() => {
-  const clk = document.getElementById('clock');
-  if (clk) clk.textContent = new Date().toLocaleTimeString();
-}, 1000);
+// --- Server Management ---
+function showServerModal() {
+  const list = document.getElementById('serverList');
+  list.innerHTML = servers.map(s => `
+    <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-secondary">
+      <div><small>${s.name}</small><br><small class="text-muted" style="font-size:.65rem">${s.host}:${s.port} · ${s.username}${s.is_default?' · ⭐':''}</small></div>
+      <div>
+        ${!s.is_default?`<button class="btn btn-outline-warning btn-sm py-0 px-1 me-1" onclick="setDefault(${s.id})" title="Default">⭐</button>`:''}
+        ${!s.is_default?`<button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="removeServer(${s.id})" title="Eliminar"><i class="bi bi-trash"></i></button>`:''}
+      </div>
+    </div>`).join('');
+  serverModal.show();
+}
 
-initChart();
-loadServers().then(() => {
-  refresh();
-  refreshThreats();
-});
+async function addServer() {
+  const name = document.getElementById('newName').value.trim();
+  const host = document.getElementById('newHost').value.trim();
+  const port = document.getElementById('newPort').value||'8822';
+  const user = document.getElementById('newUser').value||'hermes';
+  const msg = document.getElementById('addMsg');
+  if(!name||!host){ msg.innerHTML='<span class="text-danger">Nombre e IP requeridos</span>'; return; }
+  const r = await fetch('/api/servers/add', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,host,port:parseInt(port),username:user})});
+  const j = await r.json();
+  if(j.success){ msg.innerHTML='<span class="text-success">✅ Agregado</span>'; await loadServers(); showServerModal(); }
+  else msg.innerHTML='<span class="text-danger">Error: '+j.error+'</span>';
+}
+
+async function removeServer(id) { if(confirm('¿Eliminar este MikroTik?')){ await fetch(`/api/servers/${id}/remove`,{method:'POST'}); await loadServers(); showServerModal(); switchServer(); } }
+async function setDefault(id) { await fetch(`/api/servers/${id}/default`,{method:'POST'}); await loadServers(); showServerModal(); }
+
+// Init
+serverModal = new bootstrap.Modal(document.getElementById('serverModal'));
+initCharts();
+loadServers().then(()=>{ refresh(); refreshThreats(); loadHistory(); });
 setInterval(refresh, 15000);
-setInterval(refreshThreats, 60000);
+setInterval(()=>{ refreshThreats(); loadHistory(); }, 60000);
 </script>
 </body>
 </html>

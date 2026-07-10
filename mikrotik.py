@@ -206,5 +206,61 @@ def cached_get(key: str, ttl: int = 15, fn=None, *args, **kwargs):
     return result
 
 
+# --- Historial PPPoE ---
+def init_history_db():
+    db = get_db()
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS pppoe_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id INTEGER NOT NULL,
+            total_clients INTEGER NOT NULL,
+            recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (server_id) REFERENCES servers(id)
+        )
+    """)
+    db.execute("CREATE INDEX IF NOT EXISTS idx_pppoe_time ON pppoe_history(server_id, recorded_at)")
+    db.commit()
+    db.close()
+
+def snapshot_pppoe(server_id: int, total: int):
+    """Guarda un snapshot de clientes PPPoE."""
+    db = get_db()
+    db.execute("INSERT INTO pppoe_history (server_id, total_clients) VALUES (?, ?)", (server_id, total))
+    db.commit()
+    db.close()
+    # Limpiar datos viejos (más de 60 días)
+    db = get_db()
+    db.execute("DELETE FROM pppoe_history WHERE recorded_at < datetime('now', '-60 days')")
+    db.commit()
+    db.close()
+
+def get_pppoe_history(server_id: int, period: str = "1h") -> list:
+    """Obtiene historial de clientes PPPoE según período."""
+    periods = {
+        "1h": ("-1 hour", 60),     # cada 1 min
+        "8h": ("-8 hours", 300),   # cada 5 min
+        "24h": ("-24 hours", 900), # cada 15 min
+        "1w": ("-7 days", 3600),   # cada 1 hora
+        "1m": ("-30 days", 14400), # cada 4 horas
+    }
+    since, bucket_secs = periods.get(period, periods["1h"])
+    
+    db = get_db()
+    rows = db.execute("""
+        SELECT 
+            (strftime('%s', recorded_at) / ?) * ? as bucket,
+            AVG(total_clients) as avg_clients,
+            MIN(recorded_at) as ts
+        FROM pppoe_history
+        WHERE server_id = ? AND recorded_at > datetime('now', ?)
+        GROUP BY bucket
+        ORDER BY bucket
+    """, (bucket_secs, bucket_secs, server_id, since)).fetchall()
+    db.close()
+    
+    return [{"time": r["ts"], "clients": round(r["avg_clients"])} for r in rows]
+
+
 # Inicializar DB al importar
 init_db()
+init_history_db()
