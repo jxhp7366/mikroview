@@ -1,4 +1,4 @@
-"""MikroView — Dashboard de monitoreo MikroTik."""
+"""MikroView — Dashboard de monitoreo MikroTik multi-servidor."""
 import os, secrets, json
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, send_file
@@ -16,7 +16,6 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-# Usuario único (admin)
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "mikroview2029")
 
@@ -29,6 +28,13 @@ class User(UserMixin):
 def load_user(user_id):
     if user_id == "1":
         return User("1", ADMIN_USER)
+    return None
+
+def get_server_id():
+    """Obtiene server_id del query param o usa el default."""
+    sid = request.args.get("server", "")
+    if sid and sid.isdigit():
+        return int(sid)
     return None
 
 # --- Rutas de Autenticación ---
@@ -57,12 +63,44 @@ def logout():
 def dashboard():
     return render_template("dashboard.html")
 
+# --- API Servidores ---
+@app.route("/api/servers")
+@login_required
+def api_servers():
+    servers = mk.get_servers()
+    return jsonify({"success": True, "data": servers})
+
+@app.route("/api/servers/add", methods=["POST"])
+@login_required
+def api_servers_add():
+    data = request.get_json() or {}
+    ok = mk.add_server(
+        name=data.get("name", ""),
+        host=data.get("host", ""),
+        port=int(data.get("port", 8822)),
+        username=data.get("username", "hermes"),
+        key_path=data.get("key_path") or None,
+    )
+    return jsonify({"success": ok, "error": "" if ok else "Nombre duplicado"})
+
+@app.route("/api/servers/<int:server_id>/remove", methods=["POST"])
+@login_required
+def api_servers_remove(server_id):
+    mk.remove_server(server_id)
+    return jsonify({"success": True})
+
+@app.route("/api/servers/<int:server_id>/default", methods=["POST"])
+@login_required
+def api_servers_default(server_id):
+    mk.set_default(server_id)
+    return jsonify({"success": True})
+
 # --- API Endpoints ---
 @app.route("/api/status")
 @login_required
 def api_status():
     try:
-        data = mk.get_system_status()
+        data = mk.get_system_status(get_server_id())
         return jsonify({"success": True, "data": data, "ts": datetime.now().isoformat()})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -71,19 +109,11 @@ def api_status():
 @login_required
 def api_interfaces():
     try:
-        ifaces = mk.get_interfaces()
-        # Clasificar
-        wan = [i for i in ifaces if i.get("name") in ("ether1", "ether5", "sfp-sfpplus1")]
-        pppoe = [i for i in ifaces if "pppoe" in i.get("type", "").lower()]
-        return jsonify({
-            "success": True,
-            "data": {
-                "wan": wan,
-                "pppoe_count": len(pppoe),
-                "total_running": sum(1 for i in ifaces if i.get("running")),
-            },
-            "ts": datetime.now().isoformat()
-        })
+        sid = get_server_id()
+        ifaces = mk.get_interfaces(sid)
+        wan_names = ("ether1", "ether5", "sfp-sfpplus1")
+        wan = [i for i in ifaces if i.get("name") in wan_names]
+        return jsonify({"success": True, "data": {"wan": wan}, "ts": datetime.now().isoformat()})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -91,7 +121,7 @@ def api_interfaces():
 @login_required
 def api_clients():
     try:
-        data = mk.get_pppoe_clients()
+        data = mk.get_pppoe_clients(get_server_id())
         return jsonify({"success": True, "data": data, "ts": datetime.now().isoformat()})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -100,8 +130,7 @@ def api_clients():
 @login_required
 def api_logs():
     try:
-        logs = mk.get_recent_logs(100)
-        # Clasificar alertas
+        logs = mk.get_recent_logs(get_server_id(), 100)
         threats = []
         keywords = {
             "critical": ["loop", "flood", "sync attack", "ddos"],
@@ -115,41 +144,24 @@ def api_logs():
                     if kw in ll:
                         threats.append({"severity": severity, "message": line[:200]})
                         break
-        return jsonify({
-            "success": True,
-            "data": {"total_logs": len(logs), "threats": threats[-20:]},
-            "ts": datetime.now().isoformat()
-        })
+        return jsonify({"success": True, "data": {"total_logs": len(logs), "threats": threats[-20:]}, "ts": datetime.now().isoformat()})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/all")
 @login_required
 def api_all():
-    """Endpoint unificado para el dashboard (una sola llamada)."""
     try:
-        status = mk.get_system_status()
-        ifaces = mk.get_interfaces()
-        clients = mk.get_pppoe_clients()
-        
+        sid = get_server_id()
+        status = mk.get_system_status(sid)
+        ifaces = mk.get_interfaces(sid)
+        clients = mk.get_pppoe_clients(sid)
+        wan_names = ("ether1", "ether5", "sfp-sfpplus1")
         wan = []
-        for name in ("ether1", "ether5", "sfp-sfpplus1"):
+        for name in wan_names:
             match = next((i for i in ifaces if i.get("name") == name), None)
-            wan.append({
-                "name": name,
-                "running": match.get("running", False) if match else False,
-                "comment": match.get("comment", "") if match else "",
-            })
-        
-        return jsonify({
-            "success": True,
-            "data": {
-                "status": status,
-                "wan": wan,
-                "clients": clients["total"],
-            },
-            "ts": datetime.now().isoformat()
-        })
+            wan.append({"name": name, "running": match.get("running", False) if match else False, "comment": match.get("comment", "") if match else ""})
+        return jsonify({"success": True, "data": {"status": status, "wan": wan, "clients": clients["total"]}, "ts": datetime.now().isoformat()})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -159,36 +171,30 @@ CERTS_DIR = os.path.join(os.path.dirname(__file__), "certs")
 @app.route("/certs/download")
 @login_required
 def certs_download():
-    """Descarga zip con certificados."""
     import io, zipfile
     cert_pem = os.path.join(CERTS_DIR, "cert.pem")
     key_pem = os.path.join(CERTS_DIR, "key.pem")
-    
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w') as zf:
         for fname in [cert_pem, key_pem]:
             if os.path.exists(fname):
                 zf.write(fname, os.path.basename(fname))
     buf.seek(0)
-    return send_file(buf, mimetype="application/zip", as_attachment=True,
-                     download_name="mikroview-certs.zip")
+    return send_file(buf, mimetype="application/zip", as_attachment=True, download_name="mikroview-certs.zip")
 
 @app.route("/certs/ca")
 @login_required
 def certs_ca():
-    """Descarga solo el certificado CA (para importar en MikroTik)."""
     cert_pem = os.path.join(CERTS_DIR, "cert.pem")
     if os.path.exists(cert_pem):
-        return send_file(cert_pem, mimetype="application/x-pem-file",
-                         as_attachment=True, download_name="mikroview-ca.pem")
+        return send_file(cert_pem, mimetype="application/x-pem-file", as_attachment=True, download_name="mikroview-ca.pem")
     return "Certificado no encontrado", 404
 
-# --- Health Check (público) ---
+# --- Health ---
 @app.route("/health")
 def health():
     return jsonify({"status": "ok", "ts": datetime.now().isoformat()})
 
-# --- Error handlers ---
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"error": "Not found"}), 404
@@ -197,19 +203,13 @@ def not_found(e):
 def server_error(e):
     return jsonify({"error": "Internal server error"}), 500
 
-# --- Generar certificados al iniciar ---
 def ensure_certs():
-    """Genera certificado auto-firmado si no existe."""
     cert_pem = os.path.join(CERTS_DIR, "cert.pem")
     key_pem = os.path.join(CERTS_DIR, "key.pem")
     if not os.path.exists(cert_pem) or not os.path.exists(key_pem):
         os.makedirs(CERTS_DIR, exist_ok=True)
         from subprocess import run
-        run([
-            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-            "-keyout", key_pem, "-out", cert_pem, "-days", "3650",
-            "-subj", "/C=EC/ST=Imbabura/L=Ibarra/O=MikroView/CN=mikroview.local"
-        ], capture_output=True)
+        run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key_pem, "-out", cert_pem, "-days", "3650", "-subj", "/C=EC/ST=Imbabura/L=Ibarra/O=MikroView/CN=mikroview.local"], capture_output=True)
 
 if __name__ == "__main__":
     ensure_certs()

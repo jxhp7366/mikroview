@@ -34,6 +34,7 @@
 <nav class="navbar navbar-dark px-2 px-md-3">
   <span class="navbar-brand mb-0 h1"><i class="bi bi-router"></i> <span class="d-none d-sm-inline">MikroView</span></span>
   <div class="d-flex align-items-center gap-2">
+    <select class="form-select form-select-sm bg-dark text-light border-secondary" id="serverSelect" style="width:auto;max-width:140px" onchange="switchServer()"></select>
     <span class="text-muted small d-none d-sm-inline" id="clock">--</span>
     <span class="badge bg-success refresh-dot" id="statusDot">●</span>
     <a href="/logout" class="btn btn-outline-secondary btn-sm"><i class="bi bi-box-arrow-right"></i></a>
@@ -119,8 +120,33 @@
 <script>
 const MAX_POINTS = 30;
 const cpuHistory = [];
-
 let cpuChart;
+let currentServer = '';
+let servers = [];
+
+async function loadServers() {
+  try {
+    const r = await fetch('/api/servers');
+    const j = await r.json();
+    servers = j.data || [];
+    const sel = document.getElementById('serverSelect');
+    sel.innerHTML = servers.map(s => 
+      `<option value="${s.id}" ${s.is_default ? 'selected' : ''}>${s.name}</option>`
+    ).join('');
+    currentServer = servers.find(s => s.is_default)?.id || servers[0]?.id || '';
+  } catch(e) { console.error(e); }
+}
+
+function switchServer() {
+  currentServer = document.getElementById('serverSelect').value;
+  cpuHistory.length = 0;
+  refresh();
+  refreshThreats();
+}
+
+function apiUrl(path) {
+  return currentServer ? `${path}?server=${currentServer}` : path;
+}
 
 function initChart() {
   const ctx = document.getElementById('cpuChart').getContext('2d');
@@ -153,7 +179,7 @@ function initChart() {
 
 async function refresh() {
   try {
-    const r = await fetch('/api/all');
+    const r = await fetch(apiUrl('/api/all'));
     const j = await r.json();
     if (!j.success) throw new Error(j.error);
     const d = j.data;
@@ -199,7 +225,7 @@ async function refresh() {
 
 async function refreshThreats() {
   try {
-    const r = await fetch('/api/logs');
+    const r = await fetch(apiUrl('/api/logs'));
     const j = await r.json();
     const threats = j.data?.threats || [];
     const div = document.getElementById('threats');
@@ -223,8 +249,10 @@ setInterval(() => {
 }, 1000);
 
 initChart();
-refresh();
-refreshThreats();
+loadServers().then(() => {
+  refresh();
+  refreshThreats();
+});
 setInterval(refresh, 15000);
 setInterval(refreshThreats, 60000);
 </script>
