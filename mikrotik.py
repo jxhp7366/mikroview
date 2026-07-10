@@ -167,10 +167,15 @@ def get_pppoe_clients(server_id: int = None) -> dict:
     out = _ssh(srv, "/ppp active print without-paging")
     clients = []
     for line in out.split('\n'):
-        if 'pppoe' in line.lower() and '<pppoe-' in line:
-            name = line.split('<pppoe-')[1].split('>')[0] if '<pppoe-' in line else ""
-            addr = line.split()[-1] if line.split() else ""
-            clients.append({"name": name, "address": addr})
+        # Formato: " 0 R username   pppoe    MAC   IP"
+        parts = line.split()
+        if len(parts) >= 4 and 'pppoe' in parts:
+            # El último campo es la IP, el nombre está antes del tipo pppoe
+            pppoe_idx = next((i for i, p in enumerate(parts) if p == 'pppoe'), None)
+            if pppoe_idx and pppoe_idx >= 2:
+                name = parts[pppoe_idx - 1] if parts[pppoe_idx - 1] not in ('R', 'pppoe') else parts[pppoe_idx - 2] if pppoe_idx >= 2 else ""
+                addr = parts[-1] if parts else ""
+                clients.append({"name": name, "address": addr})
     return {"total": len(clients), "clients": clients[:100]}
 
 
