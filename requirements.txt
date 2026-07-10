@@ -1,0 +1,5 @@
+flask>=3.0
+flask-login>=0.6
+paramiko>=3.4
+python-dotenv>=1.0
+gunicorn>=21.0

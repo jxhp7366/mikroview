@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MikroView — MK Olivo 1</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    :root { --bg: #0f1117; --card: #1a1d27; --accent: #3b82f6; }
+    body { background: var(--bg); font-family: 'Segoe UI', system-ui, sans-serif; }
+    .card { background: var(--card); border: 1px solid #2a2d37; border-radius: 12px; }
+    .metric-value { font-size: 2.2rem; font-weight: 700; }
+    .wan-up { color: #22c55e; } .wan-down { color: #ef4444; }
+    .alert-critical { border-left: 3px solid #ef4444; }
+    .alert-high { border-left: 3px solid #f97316; }
+    .alert-medium { border-left: 3px solid #eab308; }
+    .navbar { background: var(--card) !important; border-bottom: 1px solid #2a2d37; }
+    .refresh-dot { animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .threat-row { font-size: .85rem; font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark px-3">
+  <span class="navbar-brand mb-0 h1"><i class="bi bi-router"></i> MikroView</span>
+  <div class="d-flex align-items-center gap-3">
+    <span class="text-muted small" id="clock">--</span>
+    <span class="badge bg-success refresh-dot" id="statusDot">● LIVE</span>
+    <a href="/logout" class="btn btn-outline-secondary btn-sm"><i class="bi bi-box-arrow-right"></i></a>
+  </div>
+</nav>
+
+<div class="container-fluid p-3">
+  <!-- Row 1: Métricas -->
+  <div class="row g-3 mb-3">
+    <div class="col-md-2 col-6">
+      <div class="card p-3 text-center h-100">
+        <small class="text-muted">CPU</small>
+        <div class="metric-value" id="cpu">--%</div>
+        <div class="progress mt-1" style="height:4px"><div class="progress-bar" id="cpuBar"></div></div>
+      </div>
+    </div>
+    <div class="col-md-2 col-6">
+      <div class="card p-3 text-center h-100">
+        <small class="text-muted">RAM</small>
+        <div class="metric-value" id="ram">--</div>
+        <small class="text-muted" id="ramDetail"></small>
+      </div>
+    </div>
+    <div class="col-md-2 col-6">
+      <div class="card p-3 text-center h-100">
+        <small class="text-muted">Clientes</small>
+        <div class="metric-value" id="clients">--</div>
+        <small class="text-muted">PPPoE activos</small>
+      </div>
+    </div>
+    <div class="col-md-2 col-6">
+      <div class="card p-3 text-center h-100">
+        <small class="text-muted">Uptime</small>
+        <div class="metric-value fs-4" id="uptime">--</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card p-3 h-100">
+        <small class="text-muted mb-2">WAN</small>
+        <div class="d-flex gap-2" id="wanStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: CPU Graph + Threats -->
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card p-3 h-100">
+        <small class="text-muted mb-2"><i class="bi bi-graph-up"></i> CPU (últimos minutos)</small>
+        <canvas id="cpuChart" height="160"></canvas>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card p-3 h-100">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <small class="text-muted"><i class="bi bi-shield-exclamation"></i> Alertas de seguridad</small>
+          <a href="/certs/ca" class="btn btn-outline-secondary btn-sm" title="Descargar CA para MikroTik"><i class="bi bi-download"></i> SSL</a>
+        </div>
+        <div id="threats" class="overflow-auto" style="max-height:220px">
+          <small class="text-muted">Cargando...</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="text-center text-muted small mt-3">
+    MK Olivo 1 · RB5009UG+S+ · ROS <span id="rosVersion">--</span> · 
+    <span id="lastUpdate">--</span>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4/dist/chart.umd.min.js"></script>
+<script>
+const cpuHistory = new Array(20).fill(0);
+let cpuChart;
+
+function initChart() {
+  const ctx = document.getElementById('cpuChart').getContext('2d');
+  cpuChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: cpuHistory.map((_,i) => ''),
+      datasets: [{
+        data: cpuHistory,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { min: 0, max: 100, ticks: { callback: v => v+'%' }, grid: { color: '#2a2d37' } },
+        x: { display: false }
+      }
+    }
+  });
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/all');
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    const d = j.data;
+    
+    // Métricas
+    document.getElementById('cpu').textContent = d.status.cpu + '%';
+    document.getElementById('cpuBar').style.width = d.status.cpu + '%';
+    document.getElementById('cpuBar').className = 'progress-bar ' + 
+      (d.status.cpu > 80 ? 'bg-danger' : d.status.cpu > 60 ? 'bg-warning' : 'bg-success');
+    
+    document.getElementById('ram').textContent = d.status.memory_used_pct + '%';
+    document.getElementById('ramDetail').textContent = 
+      d.status.memory_free_mb + ' MB libre / ' + d.status.memory_total_mb + ' MB';
+    
+    document.getElementById('clients').textContent = d.clients;
+    document.getElementById('uptime').textContent = d.status.uptime;
+    document.getElementById('rosVersion').textContent = d.status.version;
+    
+    // CPU chart
+    cpuHistory.push(d.status.cpu);
+    if (cpuHistory.length > 20) cpuHistory.shift();
+    if (cpuChart) {
+      cpuChart.data.datasets[0].data = cpuHistory;
+      cpuChart.update('none');
+    }
+    
+    // WAN status
+    const wanDiv = document.getElementById('wanStatus');
+    wanDiv.innerHTML = d.wan.map(w => 
+      `<span class="badge fs-6 ${w.running ? 'bg-success bg-opacity-25 text-success' : 'bg-danger bg-opacity-25 text-danger'} px-2 py-1">
+        ${w.comment || w.name}: ${w.running ? 'UP' : 'DOWN'}
+      </span>`
+    ).join('');
+    
+    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+    document.getElementById('statusDot').className = 'badge bg-success refresh-dot';
+  } catch(e) {
+    document.getElementById('statusDot').className = 'badge bg-danger';
+    console.error(e);
+  }
+}
+
+async function refreshThreats() {
+  try {
+    const r = await fetch('/api/logs');
+    const j = await r.json();
+    const threats = j.data?.threats || [];
+    const div = document.getElementById('threats');
+    if (threats.length === 0) {
+      div.innerHTML = '<small class="text-success">✅ Sin amenazas detectadas</small>';
+      return;
+    }
+    div.innerHTML = threats.slice(-15).reverse().map(t => 
+      `<div class="alert-${t.severity} bg-dark p-1 px-2 mb-1 rounded threat-row">
+        <span class="text-${t.severity === 'critical' ? 'danger' : t.severity === 'high' ? 'warning' : 'info'}">●</span>
+        ${t.message}
+      </div>`
+    ).join('');
+  } catch(e) { console.error(e); }
+}
+
+// Reloj
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+initChart();
+refresh();
+refreshThreats();
+setInterval(refresh, 15000);
+setInterval(refreshThreats, 60000);
+</script>
+</body>
+</html>
